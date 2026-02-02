@@ -24,9 +24,15 @@ async def run_discord_bot():
         if stub_enabled and not example_sent:
             example_sent = True
             user_id = os.getenv("BRAINDRIVE_USER_ID", "")
+            target_user_id = os.getenv("BRAINDRIVE_TARGET_USER_ID", "") or None
+            settings_instance_id = os.getenv("DISCORD_SETTINGS_INSTANCE_ID", "") or None
+            service_secret = os.getenv("DISCORD_SERVICE_SECRET", "") or None
             if user_id:
                 payload = build_message_payload(
                     user_id=user_id,
+                    target_user_id=target_user_id,
+                    settings_instance_id=settings_instance_id,
+                    service_secret=service_secret,
                     guild_id="example-guild",
                     channel_id="example-channel",
                     message_id="example-message",

@@ -25,6 +25,9 @@ Example payload:
 ```json
 {
   "user_id": "USER_ID",
+  "target_user_id": "USER_ID",
+  "settings_instance_id": "SETTINGS_INSTANCE_ID",
+  "service_secret": "PER_USER_SECRET",
   "guild_id": "123",
   "channel_id": "456",
   "message_id": "789",
@@ -42,3 +45,4 @@ Example payload:
 
 Authentication:
 - Provide `BRAINDRIVE_AUTH_TOKEN` and `BRAINDRIVE_API_URL` in `.env`.
+- `BRAINDRIVE_AUTH_TOKEN` should be a **service account** JWT, not an end-user token.

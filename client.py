@@ -10,6 +10,9 @@ DEFAULT_API_URL = "http://localhost:8000"
 def build_message_payload(
     *,
     user_id: str,
+    target_user_id: Optional[str] = None,
+    settings_instance_id: Optional[str] = None,
+    service_secret: Optional[str] = None,
     guild_id: Optional[str],
     channel_id: Optional[str],
     message_id: Optional[str],
@@ -26,6 +29,12 @@ def build_message_payload(
         "message_id": message_id,
         "text": text,
     }
+    if target_user_id:
+        payload["target_user_id"] = target_user_id
+    if settings_instance_id:
+        payload["settings_instance_id"] = settings_instance_id
+    if service_secret:
+        payload["service_secret"] = service_secret
     if rag_collection_id:
         payload["rag_collection_id"] = rag_collection_id
     if model:
