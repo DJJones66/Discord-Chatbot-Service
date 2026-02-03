@@ -3,11 +3,15 @@ import asyncio
 from fastapi import FastAPI
 import uvicorn
 
+from db import init_db, log_message
+
 from client import build_message_payload, post_discord_message
 
 app = FastAPI()
 
 SERVICE_NAME = "discord_chatbot_service"
+
+init_db()
 
 @app.get("/health")
 async def health():
@@ -49,6 +53,17 @@ async def run_discord_bot():
                 try:
                     response = await post_discord_message(payload)
                     print("Discord bot stub response:", response)
+                    log_message(
+                        message_id=payload.get("message_id") or "stub-message",
+                        user_id=target_user_id or user_id,
+                        guild_id=payload.get("guild_id"),
+                        channel_id=payload.get("channel_id"),
+                        prompt=payload.get("text") or "",
+                        response=response.get("response") if isinstance(response, dict) else str(response),
+                        rag_collection=payload.get("rag_collection_id"),
+                        model=payload.get("model"),
+                        persona_id=payload.get("persona_id"),
+                    )
                 except Exception as exc:
                     print("Discord bot stub call failed:", exc)
 

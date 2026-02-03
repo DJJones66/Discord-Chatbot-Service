@@ -5,6 +5,7 @@ It is intended to be managed by BrainDrive's service runtime system (venv_proces
 
 ## Files
 - `service.py` - FastAPI app with `/health` plus placeholders for Discord bot logic
+- `db.py` - SQLite helpers for Discord guild/channel/message logs
 - `requirements.txt` - Python deps (discord.py + FastAPI + uvicorn)
 - `service_scripts/` - venv helpers used by BrainDrive
 - `client.py` - tiny helper for calling the BrainDrive plugin `/discord/message` endpoint
@@ -46,3 +47,7 @@ Example payload:
 Authentication:
 - Provide `BRAINDRIVE_AUTH_TOKEN` and `BRAINDRIVE_API_URL` in `.env`.
 - `BRAINDRIVE_AUTH_TOKEN` should be a **service account** JWT, not an end-user token.
+
+Service SQLite:
+- Defaults to `./data/discord_service.db` inside the service runtime directory.
+- Override with `DISCORD_SERVICE_DB=/path/to/discord_service.db`.
