@@ -46,10 +46,16 @@ def build_message_payload(
     return payload
 
 
-async def post_discord_message(payload: Dict[str, Any]) -> Dict[str, Any]:
-    api_url = os.getenv("BRAINDRIVE_API_URL", DEFAULT_API_URL).rstrip("/")
-    plugin_slug = os.getenv("BRAINDRIVE_PLUGIN_SLUG", DEFAULT_PLUGIN_SLUG)
-    auth_token = os.getenv("BRAINDRIVE_AUTH_TOKEN")
+async def post_discord_message(
+    payload: Dict[str, Any],
+    *,
+    api_url: Optional[str] = None,
+    plugin_slug: Optional[str] = None,
+    auth_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    api_url = (api_url or os.getenv("BRAINDRIVE_API_URL", DEFAULT_API_URL)).rstrip("/")
+    plugin_slug = plugin_slug or os.getenv("BRAINDRIVE_PLUGIN_SLUG", DEFAULT_PLUGIN_SLUG)
+    auth_token = auth_token or os.getenv("BRAINDRIVE_AUTH_TOKEN")
 
     headers = {}
     if auth_token:
