@@ -420,12 +420,16 @@ async def stop_bot() -> None:
     if BOT_CLIENT:
         try:
             await BOT_CLIENT.close()
+        except asyncio.CancelledError:
+            pass
         except Exception:
             pass
     if BOT_TASK and not BOT_TASK.done():
         BOT_TASK.cancel()
         try:
             await BOT_TASK
+        except asyncio.CancelledError:
+            pass
         except Exception:
             pass
     BOT_TASK = None
