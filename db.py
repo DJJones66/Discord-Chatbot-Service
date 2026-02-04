@@ -1,9 +1,10 @@
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "data" / "discord_service.db"
 
@@ -67,6 +68,57 @@ def init_db() -> Path:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discord_conversation (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                discord_user_id TEXT,
+                discord_username TEXT,
+                guild_id TEXT,
+                channel_id TEXT,
+                settings_instance_id TEXT,
+                scope TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discord_message (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                discord_user_id TEXT,
+                discord_username TEXT,
+                guild_id TEXT,
+                channel_id TEXT,
+                settings_instance_id TEXT,
+                role TEXT,
+                content TEXT,
+                message_id TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_discord_message_scope_created
+            ON discord_message (discord_user_id, guild_id, channel_id, settings_instance_id, created_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_discord_message_conversation_created
+            ON discord_message (conversation_id, created_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_discord_conversation_scope
+            ON discord_conversation (discord_user_id, guild_id, channel_id, settings_instance_id)
+            """
+        )
         conn.commit()
     finally:
         conn.close()
@@ -79,6 +131,209 @@ def _execute(query: str, params: tuple) -> None:
     try:
         conn.execute(query, params)
         conn.commit()
+    finally:
+        conn.close()
+
+
+def _connect() -> sqlite3.Connection:
+    db_path = _db_path()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _normalize_id(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return text
+
+
+def _normalize_scope(scope: Optional[str]) -> str:
+    normalized = (scope or "channel").strip().lower()
+    if normalized not in {"channel", "guild", "dm"}:
+        return "channel"
+    return normalized
+
+
+def _conversation_scope_values(
+    *,
+    scope: Optional[str],
+    guild_id: Optional[str],
+    channel_id: Optional[str],
+    settings_instance_id: Optional[str],
+) -> tuple[str, str, str, str]:
+    normalized_scope = _normalize_scope(scope)
+    guild_value = _normalize_id(guild_id)
+    channel_value = _normalize_id(channel_id)
+    settings_value = _normalize_id(settings_instance_id)
+
+    if normalized_scope == "guild" and guild_value:
+        channel_value = ""
+    elif normalized_scope == "dm" and guild_value:
+        # For guild messages, fall back to channel scoping.
+        normalized_scope = "channel"
+    return normalized_scope, guild_value, channel_value, settings_value
+
+
+def get_or_create_conversation(
+    *,
+    user_id: str,
+    discord_user_id: str,
+    discord_username: Optional[str],
+    guild_id: Optional[str],
+    channel_id: Optional[str],
+    settings_instance_id: Optional[str],
+    scope: Optional[str] = None,
+) -> str:
+    discord_user_value = _normalize_id(discord_user_id)
+    discord_username_value = _normalize_id(discord_username)
+    normalized_scope, guild_value, channel_value, settings_value = _conversation_scope_values(
+        scope=scope,
+        guild_id=guild_id,
+        channel_id=channel_id,
+        settings_instance_id=settings_instance_id,
+    )
+    now = datetime.utcnow().isoformat()
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            """
+            SELECT id FROM discord_conversation
+            WHERE discord_user_id = ?
+              AND guild_id = ?
+              AND channel_id = ?
+              AND settings_instance_id = ?
+            LIMIT 1
+            """,
+            (discord_user_value, guild_value, channel_value, settings_value),
+        )
+        row = cursor.fetchone()
+        if row:
+            convo_id = row["id"]
+            conn.execute(
+                """
+                UPDATE discord_conversation
+                SET updated_at = ?, discord_username = ?, scope = ?
+                WHERE id = ?
+                """,
+                (now, discord_username_value, normalized_scope, convo_id),
+            )
+            conn.commit()
+            return convo_id
+
+        convo_id = f"conv_{uuid4().hex}"
+        conn.execute(
+            """
+            INSERT INTO discord_conversation
+            (id, user_id, discord_user_id, discord_username, guild_id, channel_id,
+             settings_instance_id, scope, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                convo_id,
+                user_id,
+                discord_user_value,
+                discord_username_value,
+                guild_value,
+                channel_value,
+                settings_value,
+                normalized_scope,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        return convo_id
+    finally:
+        conn.close()
+
+
+def insert_message(
+    *,
+    conversation_id: str,
+    role: str,
+    content: str,
+    message_id: Optional[str],
+    discord_user_id: Optional[str],
+    discord_username: Optional[str],
+    guild_id: Optional[str],
+    channel_id: Optional[str],
+    settings_instance_id: Optional[str],
+) -> None:
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO discord_message
+            (id, conversation_id, discord_user_id, discord_username, guild_id, channel_id,
+             settings_instance_id, role, content, message_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"msg_{uuid4().hex}",
+                conversation_id,
+                _normalize_id(discord_user_id),
+                _normalize_id(discord_username),
+                _normalize_id(guild_id),
+                _normalize_id(channel_id),
+                _normalize_id(settings_instance_id),
+                role,
+                content,
+                _normalize_id(message_id),
+                datetime.utcnow().isoformat(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_recent_history(
+    *,
+    conversation_id: str,
+    max_turns: Optional[int] = 6,
+    max_age_minutes: Optional[int] = 120,
+) -> List[Dict[str, str]]:
+    if not conversation_id:
+        return []
+    try:
+        limit = int(max_turns) if max_turns is not None else 0
+    except (TypeError, ValueError):
+        limit = 0
+    if limit <= 0:
+        return []
+    limit = min(limit, 50)
+
+    params: List[Any] = [conversation_id]
+    query = """
+        SELECT role, content
+        FROM discord_message
+        WHERE conversation_id = ?
+    """
+    if max_age_minutes:
+        try:
+            age_minutes = int(max_age_minutes)
+        except (TypeError, ValueError):
+            age_minutes = 0
+        if age_minutes > 0:
+            cutoff = datetime.utcnow() - timedelta(minutes=age_minutes)
+            query += " AND created_at >= ?"
+            params.append(cutoff.isoformat())
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+
+    conn = _connect()
+    try:
+        cursor = conn.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        history = [
+            {"role": row["role"], "content": row["content"]}
+            for row in rows
+            if row["role"] and row["content"]
+        ]
+        history.reverse()
+        return history
     finally:
         conn.close()
 

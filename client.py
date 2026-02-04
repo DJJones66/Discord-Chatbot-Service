@@ -21,6 +21,7 @@ def build_message_payload(
     model: Optional[str] = None,
     persona_id: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
+    chat_history: Optional[list] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "user_id": user_id,
@@ -43,6 +44,8 @@ def build_message_payload(
         payload["persona_id"] = persona_id
     if config:
         payload["config"] = config
+    if chat_history:
+        payload["chat_history"] = chat_history
     return payload
 
 
@@ -62,7 +65,21 @@ async def post_discord_message(
         headers["Authorization"] = f"Bearer {auth_token}"
 
     url = f"{api_url}/api/v1/plugin-api/{plugin_slug}/discord/message"
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
+    timeout = httpx.Timeout(120.0, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = ""
+            if exc.response is not None:
+                try:
+                    body = exc.response.text
+                except Exception:
+                    body = ""
+            raise RuntimeError(
+                f"BrainDrive request failed: {exc.response.status_code if exc.response else 'unknown'} {body}".strip()
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(f"BrainDrive request failed: {exc!r}") from exc
         return response.json()
